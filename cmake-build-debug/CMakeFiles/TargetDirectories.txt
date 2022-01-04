@@ -1,5 +1,5 @@
 /home/geralt/matf-rg-game-omega/cmake-build-debug/CMakeFiles/rebuild_cache.dir
-/home/geralt/matf-rg-game-omega/cmake-build-debug/CMakeFiles/project_base.dir
+/home/geralt/matf-rg-game-omega/cmake-build-debug/CMakeFiles/matf_rg_game_omega.dir
 /home/geralt/matf-rg-game-omega/cmake-build-debug/CMakeFiles/edit_cache.dir
 /home/geralt/matf-rg-game-omega/cmake-build-debug/CMakeFiles/STB_IMAGE.dir
 /home/geralt/matf-rg-game-omega/cmake-build-debug/libs/glad/CMakeFiles/edit_cache.dir
