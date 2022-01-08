@@ -1,6 +1,7 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
+#include "rg/Cube.hpp"
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -15,6 +16,11 @@
 #include <learnopengl/model.h>
 
 #include <iostream>
+#include <unordered_map>
+
+#define CUBE_VELOCITY 3.0f
+#define CUBE_Z_SPAWN_FACTOR -7.0f
+
 void framebuffer_size_callback(GLFWwindow *window, int width, int height);
 
 void mouse_callback(GLFWwindow *window, double xpos, double ypos);
@@ -39,6 +45,7 @@ bool firstMouse = true;
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
+float translateCube = 0.0f;
 struct PointLight {
     glm::vec3 position;
     glm::vec3 ambient;
@@ -49,6 +56,8 @@ struct PointLight {
     float linear;
     float quadratic;
 };
+
+std::vector<Cube* > cubes;
 
 int main() {
     // glfw: initialize and configure
@@ -74,6 +83,7 @@ int main() {
     // tell GLFW to capture our mouse
 //    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     glfwSetKeyCallback(window, key_callback);
+    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     // glad: load all OpenGL function pointers
     // ---------------------------------------
     if (!gladLoadGLLoader((GLADloadproc) glfwGetProcAddress)) {
@@ -82,6 +92,8 @@ int main() {
     }
 
     Shader planeShader("resources/shaders/plane.vs", "resources/shaders/plane.fs");
+    Shader cubeShader("resources/shaders/cube.vs", "resources/shaders/cube.fs");
+
     float planeVertices[] = {
             //positions                    //texture coords
             1.0f,  0.0f, 1.0f,     1.0f, 0.0f,
@@ -95,6 +107,51 @@ int main() {
             1, 2, 3
     };
 
+    float cubeVertices[] = {
+            -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
+            0.5f, -0.5f, -0.5f,  1.0f, 0.0f,
+            0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+            0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+            -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
+            -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
+
+            -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+            0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+            0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
+            0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
+            -0.5f,  0.5f,  0.5f,  0.0f, 1.0f,
+            -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+
+            -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+            -0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+            -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+            -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+            -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+            -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+
+            0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+            0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+            0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+            0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+            0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+            0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+
+            -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+            0.5f, -0.5f, -0.5f,  1.0f, 1.0f,
+            0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+            0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+            -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+            -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+
+            -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
+            0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+            0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+            0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+            -0.5f,  0.5f,  0.5f,  0.0f, 0.0f,
+            -0.5f,  0.5f, -0.5f,  0.0f, 1.0f
+    };
+
+    //plane data
     unsigned int planeVAO, planeVBO, planeEBO;
 
     //gen buffers
@@ -117,11 +174,29 @@ int main() {
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3*sizeof(float)));
     glEnableVertexAttribArray(1);
 
+    //cube data
+    unsigned int cubeVAO, cubeVBO;
+    glGenVertexArrays(1, &cubeVAO);
+    glGenBuffers(1, &cubeVBO);
+
+    glBindVertexArray(cubeVAO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(cubeVertices), &cubeVertices, GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3*sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
     // tell stb_image.h to flip loaded texture's on the y-axis (before loading model).
     stbi_set_flip_vertically_on_load(true);
 
     //Gen Textures
-    unsigned int planeTexture;
+    unsigned int planeTexture, cubeTexture;
     glGenTextures(1, &planeTexture);
     //Gen plane texture
 
@@ -145,9 +220,31 @@ int main() {
         std::cout << "Failed to load texture" << std::endl;
     }
     stbi_image_free(data);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
 
+    glGenTextures(1, &cubeTexture);
+    //Gen plane texture
+
+    glBindTexture(GL_TEXTURE_2D, cubeTexture);
+    //Wrapping
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    //Filtering
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+    data = stbi_load("resources/textures/container.jpg", &width, &height, &nrChannels, 0);
+
+    if(data)
+    {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+        glGenerateMipmap(GL_TEXTURE_2D);
+    }
+    else {
+        std::cout << "Failed to load texture" << std::endl;
+    }
+    stbi_image_free(data);
+
+    cubes.push_back(new Cube());
     // render loop
     // -----------
     while (!glfwWindowShouldClose(window)) {
@@ -168,22 +265,53 @@ int main() {
         planeShader.use();
         planeShader.setInt("planeTexture", 0);
 
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, planeTexture);
+
         glm::mat4 view = camera.GetViewMatrix();
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH/(float)SCR_HEIGHT, 0.1f, 100.0f);
         planeShader.setMat4("projection", projection);
         planeShader.setMat4("view", view);
 
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE0, planeTexture);
-
-
         glBindVertexArray(planeVAO);
         for(unsigned int i = 0; i< 10; i++){
             glm::mat4 model = glm::mat4(1.0f);
-            model = glm::translate(model, glm::vec3(0.0f,0.0f,-2.0f * i));
+            model = glm::translate(model, glm::vec3(0.0f,0.0f,-1.0f * i));
             planeShader.setMat4("model", model);
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         }
+        cubeShader.use();
+        cubeShader.setInt("cubeTexture", 1);
+
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, cubeTexture);
+
+        glBindVertexArray(cubeVAO);
+        cubeShader.setMat4("view", view);
+        cubeShader.setMat4("projection", projection);
+        float deltaZ = 0.0f;
+        for(int i = 0; i != cubes.size(); i++){
+            if(cubes[i] == nullptr)
+                continue;
+            float xPos = cubes[i]->xPos();
+            float zPos = cubes[i]->zPos();
+
+            float zPosition = zPos + deltaTime * CUBE_VELOCITY;
+
+            if(deltaZ > zPosition)
+                deltaZ = zPosition;
+
+            if(zPosition > -0.2f){
+                delete cubes[i];
+                cubes[i] = nullptr; // TODO MEMORY LEAKAGE
+                continue;
+            }
+            glm::mat4 model = cubes[i]->translate(xPos, 0.0f, zPosition);
+            cubeShader.setMat4("model", model);
+            glDrawArrays(GL_TRIANGLES, 0, 36);
+        }
+        if((deltaZ > CUBE_Z_SPAWN_FACTOR)) // TODO change spawn logic
+            cubes.push_back(new Cube());
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
@@ -198,7 +326,12 @@ int main() {
 }
 
 void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods){
+    if(key == GLFW_KEY_W && action == GLFW_PRESS)
+        translateCube += 0.2f;
+    if(key == GLFW_KEY_S && action == GLFW_PRESS)
+        translateCube -= 0.2f;
 
+    std::cerr << translateCube << std::endl;
 }
 
 // process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
