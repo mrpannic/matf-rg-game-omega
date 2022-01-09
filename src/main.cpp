@@ -244,6 +244,7 @@ int main() {
     }
     stbi_image_free(data);
 
+    int lastNullPos = -1;
     cubes.push_back(new Cube());
     // render loop
     // -----------
@@ -289,10 +290,15 @@ int main() {
         glBindVertexArray(cubeVAO);
         cubeShader.setMat4("view", view);
         cubeShader.setMat4("projection", projection);
+
         float deltaZ = 0.0f;
+
         for(int i = 0; i != cubes.size(); i++){
-            if(cubes[i] == nullptr)
+
+            if(cubes[i] == nullptr){
+                lastNullPos = i;
                 continue;
+            }
             float xPos = cubes[i]->xPos();
             float zPos = cubes[i]->zPos();
 
@@ -303,15 +309,20 @@ int main() {
 
             if(zPosition > -0.2f){
                 delete cubes[i];
-                cubes[i] = nullptr; // TODO MEMORY LEAKAGE
+                cubes[i] = nullptr;
                 continue;
             }
             glm::mat4 model = cubes[i]->translate(xPos, 0.0f, zPosition);
             cubeShader.setMat4("model", model);
             glDrawArrays(GL_TRIANGLES, 0, 36);
         }
-        if((deltaZ > CUBE_Z_SPAWN_FACTOR)) // TODO change spawn logic
+        if((deltaZ > CUBE_Z_SPAWN_FACTOR) && lastNullPos != -1) {// TODO change spawn logic
+            cubes[lastNullPos] = new Cube();
+            lastNullPos = -1;
+        }
+        else if((deltaZ > CUBE_Z_SPAWN_FACTOR) && lastNullPos == -1)
             cubes.push_back(new Cube());
+
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
