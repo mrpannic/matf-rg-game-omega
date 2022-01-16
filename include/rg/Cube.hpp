@@ -14,6 +14,7 @@
 class Cube {
 public:
     Cube(){
+        srand(time(nullptr));
         float lane = randomLane();
         setModel(lane, 0.0f, Z_DEFAULT);
     };
@@ -42,6 +43,12 @@ public:
     float zPos(){
         return z;
     }
+
+    Cube* additionalXLaneCube(){
+        float xNew = spawnOnDifferentLane(this->x);
+        return new Cube(xNew, 0.0f, Z_DEFAULT);
+    }
+
 private:
 
     // tells us if the object is in the middle, left or right
@@ -58,9 +65,10 @@ private:
         model = glm::scale(model, glm::vec3(0.4f, 0.4f,0.4f));
     }
 
-    float spawnOnDifferentLane(float xCurrent){
+    float spawnOnDifferentLane(float lastXPos){
         float xNew = randomLane();
-        while(xCurrent - xNew <= 0.01f){
+        srand(time(nullptr));
+        while(xNew == lastXPos){
             xNew = randomLane();
         }
         return xNew;
@@ -68,9 +76,9 @@ private:
 
     float randomLane(){
         const float lanes[] = {-0.66, 0.0, 0.66};
-        srand(time(nullptr));
         int lane = rand() % 3;
         return lanes[lane];
     }
+
 };
 #endif //MATF_RG_GAME_OMEGA_CUBE_HPP

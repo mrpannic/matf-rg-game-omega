@@ -16,10 +16,10 @@
 #include <learnopengl/model.h>
 
 #include <iostream>
-#include <unordered_map>
+#include <unordered_set>
 
-#define CUBE_VELOCITY 3.0f
-#define CUBE_Z_SPAWN_FACTOR -7.0f
+#define CUBE_VELOCITY 2.5f
+#define CUBE_Z_SPAWN_FACTOR -6.0f
 
 void framebuffer_size_callback(GLFWwindow *window, int width, int height);
 
@@ -57,7 +57,7 @@ struct PointLight {
     float quadratic;
 };
 
-std::vector<Cube* > cubes;
+std::unordered_set<Cube* > cubes;
 
 int main() {
     // glfw: initialize and configure
@@ -246,9 +246,9 @@ int main() {
         std::cout << "Failed to load texture" << std::endl;
     }
     stbi_image_free(data);
-
-    int lastNullPos = -1;
-    cubes.push_back(new Cube());
+    Cube* firstCube = new Cube();
+    cubes.insert(firstCube);
+    cubes.insert(firstCube->additionalXLaneCube());
     // render loop
     // -----------
     while (!glfwWindowShouldClose(window)) {
@@ -295,15 +295,11 @@ int main() {
         cubeShader.setMat4("projection", projection);
 
         float deltaZ = 0.0f;
-
-        for(int i = 0; i != cubes.size(); i++){
-
-            if(cubes[i] == nullptr){
-                lastNullPos = i;
-                continue;
-            }
-            float xPos = cubes[i]->xPos();
-            float zPos = cubes[i]->zPos();
+        float xPos = 0.0f;
+        for(auto cubeIt = cubes.begin(); cubeIt != cubes.end();){
+            Cube* cube = *cubeIt;
+            xPos = cube->xPos();
+            float zPos = cube->zPos();
 
             float zPosition = zPos + deltaTime * CUBE_VELOCITY;
 
@@ -311,21 +307,20 @@ int main() {
                 deltaZ = zPosition;
 
             if(zPosition > -0.2f){
-                delete cubes[i];
-                cubes[i] = nullptr;
+                std::cerr << cube->xPos() << std::endl;
+                cubeIt = cubes.erase(cubeIt);
                 continue;
             }
-            glm::mat4 model = cubes[i]->translate(xPos, 0.0f, zPosition);
+            glm::mat4 model = cube->translate(xPos, 0.0f, zPosition);
             cubeShader.setMat4("model", model);
             glDrawArrays(GL_TRIANGLES, 0, 36);
+            ++cubeIt;
         }
-        if((deltaZ > CUBE_Z_SPAWN_FACTOR) && lastNullPos != -1) {// TODO change spawn logic
-            cubes[lastNullPos] = new Cube();
-            lastNullPos = -1;
+        if((deltaZ > CUBE_Z_SPAWN_FACTOR)) {
+            Cube* newCube = new Cube();
+            cubes.insert(newCube);
+            cubes.insert(newCube->additionalXLaneCube());
         }
-        else if((deltaZ > CUBE_Z_SPAWN_FACTOR) && lastNullPos == -1)
-            cubes.push_back(new Cube());
-
 //        modelShader.use();
 //
 //        glm::mat4 model = glm::mat4(1.0f);
