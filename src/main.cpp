@@ -93,6 +93,9 @@ int main() {
 
     Shader planeShader("resources/shaders/plane.vs", "resources/shaders/plane.fs");
     Shader cubeShader("resources/shaders/cube.vs", "resources/shaders/cube.fs");
+//    Shader modelShader("resources/shaders/model.vs", "resources/shaders/model.fs");
+
+//    Model objectModel("resources/objects/dog_model/dog_model.obj");
 
     float planeVertices[] = {
             //positions                    //texture coords
@@ -323,7 +326,18 @@ int main() {
         else if((deltaZ > CUBE_Z_SPAWN_FACTOR) && lastNullPos == -1)
             cubes.push_back(new Cube());
 
-
+//        modelShader.use();
+//
+//        glm::mat4 model = glm::mat4(1.0f);
+//        model = glm::translate(model, glm::vec3(0.0f, 0.0f, -3.0f));
+//        model = glm::rotate(model, glm::radians(180.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+//        model = glm::scale(model, glm::vec3(0.014f));
+//
+//        modelShader.setMat4("projection", projection);
+//        modelShader.setMat4("view", view);
+//        modelShader.setMat4("model", model);
+//
+//        objectModel.Draw(modelShader);
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
         glfwSwapBuffers(window);
