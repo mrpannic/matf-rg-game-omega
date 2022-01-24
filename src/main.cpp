@@ -49,7 +49,9 @@ bool firstMouse = true;
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
-float translateCube = 0.0f;
+
+float xModelPos = 0.0f;
+
 struct SpotLight {
     glm::vec3 position;
     glm::vec3 direction;
@@ -113,12 +115,14 @@ int main() {
     }
 
     setUpLights();
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     Shader planeShader("resources/shaders/plane.vs", "resources/shaders/plane.fs");
     Shader cubeShader("resources/shaders/cube.vs", "resources/shaders/cube.fs");
-//    Shader modelShader("resources/shaders/model.vs", "resources/shaders/model.fs");
+    Shader modelShader("resources/shaders/model.vs", "resources/shaders/model.fs");
 
-//    Model objectModel("resources/objects/dog_model/dog_model.obj");
+    Model objectModel("resources/objects/gazelle_model/10020_Gazelle_v04.obj");
 
     float planeVertices[] = {
             //positions - 3f                   //normals - 3f                      //texture coords - 2f
@@ -134,6 +138,7 @@ int main() {
     };
 
     float cubeVertices[] = {
+            //back face
             // positions                       // normals                         // texture coords
             -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f,  0.0f,
             0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f,  0.0f,
@@ -142,20 +147,23 @@ int main() {
             -0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f,  1.0f,
             -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f,  0.0f,
 
+            //front face
             -0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f,  0.0f,
+            0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f,  1.0f,
             0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f,  0.0f,
             0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f,  1.0f,
-            0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f,  1.0f,
-            -0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f,  1.0f,
             -0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f,  0.0f,
+            -0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f,  1.0f,
 
+            //left face
             -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  1.0f,  0.0f,
+            -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  0.0f,  1.0f,
             -0.5f,  0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  1.0f,  1.0f,
             -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  0.0f,  1.0f,
-            -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  0.0f,  1.0f,
-            -0.5f, -0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  0.0f,  0.0f,
             -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  1.0f,  0.0f,
+            -0.5f, -0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  0.0f,  0.0f,
 
+            //right face
             0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  1.0f,  0.0f,
             0.5f,  0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  1.0f,  1.0f,
             0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  0.0f,  1.0f,
@@ -163,13 +171,15 @@ int main() {
             0.5f, -0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  0.0f,  0.0f,
             0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  1.0f,  0.0f,
 
+            //bottom face
             -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  0.0f,  1.0f,
+            0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  1.0f,  0.0f,
             0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  1.0f,  1.0f,
             0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  1.0f,  0.0f,
-            0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  1.0f,  0.0f,
-            -0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  0.0f,  0.0f,
             -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  0.0f,  1.0f,
+            -0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  0.0f,  0.0f,
 
+            //top face
             -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f,  1.0f,
             0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  1.0f,  1.0f,
             0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  1.0f,  0.0f,
@@ -236,8 +246,8 @@ int main() {
 
     glBindTexture(GL_TEXTURE_2D, planeTexture);
     //Wrapping
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     //Filtering
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -324,11 +334,16 @@ int main() {
         glBindVertexArray(cubeVAO);
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
+
+        glEnable(GL_CULL_FACE);
+        glFrontFace(GL_CW);
+
         cubeShader.setMat4("view", view);
         cubeShader.setMat4("projection", projection);
         setUpShaderLights(cubeShader);
-        float deltaZ = 0.0f;
+
         float xPos = 0.0f;
+        float deltaZ = 0.0f;
         for(auto cubeIt = cubes.begin(); cubeIt != cubes.end();){
             Cube* cube = *cubeIt;
             xPos = cube->xPos();
@@ -336,13 +351,17 @@ int main() {
 
             float zPosition = zPos + deltaTime * CUBE_VELOCITY;
 
-            if(deltaZ > zPosition)
+            if(deltaZ > zPosition) {
                 deltaZ = zPosition;
+            }
 
             if(zPosition > -0.2f){
                 cubeIt = cubes.erase(cubeIt);
                 continue;
             }
+
+
+
             glm::mat4 model = cube->translate(xPos, 0.0f, zPosition);
             cubeShader.setMat4("model", model);
             glDrawArrays(GL_TRIANGLES, 0, 36);
@@ -353,25 +372,29 @@ int main() {
             cubes.insert(newCube);
             cubes.insert(newCube->additionalXLaneCube());
         }
+
+        modelShader.use();
+
+        glm::mat4 model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(xModelPos, 0.0f, -1.0f));
+        model = glm::rotate(model, glm::radians(270.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+        model = glm::rotate(model, glm::radians(-180.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        model = glm::scale(model, glm::vec3(0.006f));
+
+        modelShader.setMat4("projection", projection);
+        modelShader.setMat4("view", view);
+        modelShader.setMat4("model", model);
+
+        objectModel.Draw(modelShader);
         glDisable(GL_DEPTH_TEST);
-//        modelShader.use();
-//
-//        glm::mat4 model = glm::mat4(1.0f);
-//        model = glm::translate(model, glm::vec3(0.0f, 0.0f, -3.0f));
-//        model = glm::rotate(model, glm::radians(180.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-//        model = glm::scale(model, glm::vec3(0.014f));
-//
-//        modelShader.setMat4("projection", projection);
-//        modelShader.setMat4("view", view);
-//        modelShader.setMat4("model", model);
-//
-//        objectModel.Draw(modelShader);
+        glDisable(GL_CULL_FACE);
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
 
+    cubes.clear();
     // glfw: terminate, clearing all previously allocated GLFW resources.
     // ------------------------------------------------------------------
     glfwTerminate();
@@ -380,11 +403,15 @@ int main() {
 
 void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods){
     if(key == GLFW_KEY_W && action == GLFW_PRESS)
-        translateCube += 0.2f;
-    if(key == GLFW_KEY_S && action == GLFW_PRESS)
-        translateCube -= 0.2f;
+        std::cerr << "Key not set" << std::endl;
 
-    std::cerr << translateCube << std::endl;
+    if(key == GLFW_KEY_LEFT && action == GLFW_PRESS && xModelPos > -0.66f){
+        xModelPos -= 0.66f;
+    }
+
+    if(key == GLFW_KEY_RIGHT && action == GLFW_PRESS && xModelPos < 0.66f){
+        xModelPos += 0.66f;
+    }
 }
 
 // process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
