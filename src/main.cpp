@@ -35,6 +35,10 @@ void setUpLights();
 
 void setUpShaderLights(Shader shader);
 
+int comparableFloat(float val);
+
+void resetGame();
+
 // settings
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
@@ -51,7 +55,7 @@ float lastFrame = 0.0f;
 
 
 float xModelPos = 0.0f;
-
+bool collided = false;
 struct SpotLight {
     glm::vec3 position;
     glm::vec3 direction;
@@ -104,7 +108,7 @@ int main() {
     }
     glfwMakeContextCurrent(window);
     // tell GLFW to capture our mouse
-//    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     glfwSetKeyCallback(window, key_callback);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     // glad: load all OpenGL function pointers
@@ -351,15 +355,20 @@ int main() {
 
             float zPosition = zPos + deltaTime * CUBE_VELOCITY;
 
-            if(deltaZ > zPosition) {
+            if(deltaZ - zPosition >= 0.01f) {
                 deltaZ = zPosition;
             }
 
-            if(zPosition > -0.2f){
+            if(zPosition + 0.3f >= 0.01f){
                 cubeIt = cubes.erase(cubeIt);
                 continue;
             }
 
+            if(comparableFloat(zPosition) >= comparableFloat(-1.2f) && comparableFloat(xModelPos) == comparableFloat(xPos)){
+                cubes.clear();
+                collided = true;
+                break;
+            }
 
 
             glm::mat4 model = cube->translate(xPos, 0.0f, zPosition);
@@ -367,16 +376,18 @@ int main() {
             glDrawArrays(GL_TRIANGLES, 0, 36);
             ++cubeIt;
         }
-        if((deltaZ > CUBE_Z_SPAWN_FACTOR)) {
+        if((deltaZ > CUBE_Z_SPAWN_FACTOR) && !collided) {
             Cube* newCube = new Cube();
             cubes.insert(newCube);
             cubes.insert(newCube->additionalXLaneCube());
         }
-
+        //try adding model movement to see if the obstacles collide, xModelPos + MOVE_LEFT or MOVE_RIGHT touches a cube
+        //the second part is to see if any of the cubes touch the model when moving, in the lane where is the model
+        //we can basically see if any of the cubes z coordinate is less than some constant where is the model and if yes then check if they are in the same lane
         modelShader.use();
 
         glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(xModelPos, 0.0f, -1.0f));
+        model = glm::translate(model, glm::vec3(xModelPos, 0.0f, -0.7f));
         model = glm::rotate(model, glm::radians(270.0f), glm::vec3(1.0f, 0.0f, 0.0f));
         model = glm::rotate(model, glm::radians(-180.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         model = glm::scale(model, glm::vec3(0.006f));
@@ -402,15 +413,16 @@ int main() {
 }
 
 void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods){
-    if(key == GLFW_KEY_W && action == GLFW_PRESS)
-        std::cerr << "Key not set" << std::endl;
-
     if(key == GLFW_KEY_LEFT && action == GLFW_PRESS && xModelPos > -0.66f){
         xModelPos -= 0.66f;
     }
 
     if(key == GLFW_KEY_RIGHT && action == GLFW_PRESS && xModelPos < 0.66f){
         xModelPos += 0.66f;
+    }
+
+    if(key == GLFW_KEY_R && action == GLFW_PRESS){
+        resetGame();
     }
 }
 
@@ -481,4 +493,12 @@ void setUpShaderLights(Shader shader){
     shader.setFloat("spotLight.outerCutOff", spotLight.outerCutOff);
 
     shader.setVec3("viewPos", camera.Position);
+}
+
+int comparableFloat(float val){
+    return (int)(val * 100);
+}
+
+void resetGame(){
+    collided = false;
 }
