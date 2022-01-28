@@ -31,6 +31,8 @@ void processInput(GLFWwindow *window);
 
 void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods);
 
+void drawImGui();
+
 void setUpLights();
 
 void setUpShaderLights(Shader shader);
@@ -56,6 +58,7 @@ float lastFrame = 0.0f;
 
 float xModelPos = 0.0f;
 bool collided = false;
+
 struct SpotLight {
     glm::vec3 position;
     glm::vec3 direction;
@@ -81,6 +84,94 @@ struct DirLight {
     glm::vec3 diffuse;
 };
 
+
+
+struct ProgramState {
+    glm::vec3 clearColor = glm::vec3(0.1f,0.2f,0.7);
+    bool ImGuiEnabled = false;
+
+    DirLight dirLight;
+    SpotLight spotLight;
+
+    void SaveToFile(std::string filename);
+
+    void LoadFromFile(std::string filename);
+};
+
+void ProgramState::SaveToFile(std::string filename) {
+    std::ofstream out(filename);
+    out << clearColor.r << '\n'
+        << clearColor.g << '\n'
+        << clearColor.b << '\n'
+        << ImGuiEnabled << '\n'
+        << spotLight.position.x << '\n'
+        << spotLight.position.y << '\n'
+        << spotLight.position.z << '\n'
+        << spotLight.direction.x << '\n'
+        << spotLight.direction.y << '\n'
+        << spotLight.direction.z << '\n'
+        << spotLight.ambient.x << '\n'
+        << spotLight.ambient.y << '\n'
+        << spotLight.ambient.z << '\n'
+        << spotLight.diffuse.x << '\n'
+        << spotLight.diffuse.y << '\n'
+        << spotLight.diffuse.z << '\n'
+        << spotLight.specular.x << '\n'
+        << spotLight.specular.y << '\n'
+        << spotLight.specular.z << '\n'
+        << dirLight.direction.x << '\n'
+        << dirLight.direction.y << '\n'
+        << dirLight.direction.z << '\n'
+        << dirLight.ambient.x << '\n'
+        << dirLight.ambient.y << '\n'
+        << dirLight.ambient.z << '\n'
+        << dirLight.diffuse.x << '\n'
+        << dirLight.diffuse.y << '\n'
+        << dirLight.diffuse.z << '\n'
+        << dirLight.specular.x << '\n'
+        << dirLight.specular.y << '\n'
+        << dirLight.specular.z << '\n';
+
+}
+
+void ProgramState::LoadFromFile(std::string filename) {
+    std::ifstream in(filename);
+    if (in) {
+        in >> clearColor.r
+           >> clearColor.g
+           >> clearColor.b
+           >> ImGuiEnabled
+           >> spotLight.position.x
+           >> spotLight.position.y
+           >> spotLight.position.z
+           >> spotLight.direction.x
+           >> spotLight.direction.y
+           >> spotLight.direction.z
+           >> spotLight.ambient.x
+           >> spotLight.ambient.y
+           >> spotLight.ambient.z
+           >> spotLight.diffuse.x
+           >> spotLight.diffuse.y
+           >> spotLight.diffuse.z
+           >> spotLight.specular.x
+           >> spotLight.specular.y
+           >> spotLight.specular.z
+           >> dirLight.direction.x
+           >> dirLight.direction.y
+           >> dirLight.direction.z
+           >> dirLight.ambient.x
+           >> dirLight.ambient.y
+           >> dirLight.ambient.z
+           >> dirLight.diffuse.x
+           >> dirLight.diffuse.y
+           >> dirLight.diffuse.z
+           >> dirLight.specular.x
+           >> dirLight.specular.y
+           >> dirLight.specular.z;
+    }
+}
+
+ProgramState *programState;
 std::unordered_set<Cube* > cubes;
 
 DirLight dirLight;
@@ -117,6 +208,20 @@ int main() {
         std::cout << "Failed to initialize GLAD" << std::endl;
         return -1;
     }
+
+    programState = new ProgramState();
+    programState->LoadFromFile("resources/program_state.txt");
+    if (programState->ImGuiEnabled) {
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+    }
+    // Init Imgui
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO &io = ImGui::GetIO();
+    (void) io;
+
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init("#version 330 core");
 
     setUpLights();
     glEnable(GL_BLEND);
@@ -325,7 +430,7 @@ int main() {
         glBindVertexArray(planeVAO);
         for(unsigned int i = 0; i< 10; i++){
             glm::mat4 model = glm::mat4(1.0f);
-            model = glm::translate(model, glm::vec3(0.0f,0.0f,-1.0f * i));
+            model = glm::translate(model, glm::vec3(0.0f,0.0f,-2.0f * i - 1.0f));
             planeShader.setMat4("model", model);
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         }
@@ -381,9 +486,7 @@ int main() {
             cubes.insert(newCube);
             cubes.insert(newCube->additionalXLaneCube());
         }
-        //try adding model movement to see if the obstacles collide, xModelPos + MOVE_LEFT or MOVE_RIGHT touches a cube
-        //the second part is to see if any of the cubes touch the model when moving, in the lane where is the model
-        //we can basically see if any of the cubes z coordinate is less than some constant where is the model and if yes then check if they are in the same lane
+
         modelShader.use();
 
         glm::mat4 model = glm::mat4(1.0f);
