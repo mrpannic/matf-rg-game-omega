@@ -33,8 +33,6 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
 
 void drawImGui();
 
-void setUpLights();
-
 void setUpShaderLights(Shader shader);
 
 int comparableFloat(float val);
@@ -75,6 +73,19 @@ struct SpotLight {
     float outerCutOff;
 };
 
+struct PointLight {
+    glm::vec3 position;
+    glm::vec3 direction;
+
+    glm::vec3 ambient;
+    glm::vec3 diffuse;
+    glm::vec3 specular;
+
+    float constant;
+    float linear;
+    float quadratic;
+};
+
 //global light
 struct DirLight {
     glm::vec3 direction;
@@ -87,15 +98,22 @@ struct DirLight {
 
 
 struct ProgramState {
-    glm::vec3 clearColor = glm::vec3(0.1f,0.2f,0.7);
-    bool ImGuiEnabled = false;
 
+    ProgramState() { setUpLights();
+        clearColor = glm::vec3(0.604575, 0.65498, 0.906863);
+        ImGuiEnabled = false;
+    }
+    glm::vec3 clearColor;
+    bool ImGuiEnabled;
     DirLight dirLight;
     SpotLight spotLight;
+    PointLight pointLight;
 
     void SaveToFile(std::string filename);
 
     void LoadFromFile(std::string filename);
+
+    void setUpLights();
 };
 
 void ProgramState::SaveToFile(std::string filename) {
@@ -119,6 +137,21 @@ void ProgramState::SaveToFile(std::string filename) {
         << spotLight.specular.x << '\n'
         << spotLight.specular.y << '\n'
         << spotLight.specular.z << '\n'
+        << pointLight.position.x << '\n'
+        << pointLight.position.y << '\n'
+        << pointLight.position.z << '\n'
+        << pointLight.direction.x << '\n'
+        << pointLight.direction.y << '\n'
+        << pointLight.direction.z << '\n'
+        << pointLight.ambient.x << '\n'
+        << pointLight.ambient.y << '\n'
+        << pointLight.ambient.z << '\n'
+        << pointLight.diffuse.x << '\n'
+        << pointLight.diffuse.y << '\n'
+        << pointLight.diffuse.z << '\n'
+        << pointLight.specular.x << '\n'
+        << pointLight.specular.y << '\n'
+        << pointLight.specular.z << '\n'
         << dirLight.direction.x << '\n'
         << dirLight.direction.y << '\n'
         << dirLight.direction.z << '\n'
@@ -131,7 +164,6 @@ void ProgramState::SaveToFile(std::string filename) {
         << dirLight.specular.x << '\n'
         << dirLight.specular.y << '\n'
         << dirLight.specular.z << '\n';
-
 }
 
 void ProgramState::LoadFromFile(std::string filename) {
@@ -156,6 +188,21 @@ void ProgramState::LoadFromFile(std::string filename) {
            >> spotLight.specular.x
            >> spotLight.specular.y
            >> spotLight.specular.z
+           >> pointLight.position.x
+           >> pointLight.position.y
+           >> pointLight.position.z
+           >> pointLight.direction.x
+           >> pointLight.direction.y
+           >> pointLight.direction.z
+           >> pointLight.ambient.x
+           >> pointLight.ambient.y
+           >> pointLight.ambient.z
+           >> pointLight.diffuse.x
+           >> pointLight.diffuse.y
+           >> pointLight.diffuse.z
+           >> pointLight.specular.x
+           >> pointLight.specular.y
+           >> pointLight.specular.z
            >> dirLight.direction.x
            >> dirLight.direction.y
            >> dirLight.direction.z
@@ -169,6 +216,35 @@ void ProgramState::LoadFromFile(std::string filename) {
            >> dirLight.specular.y
            >> dirLight.specular.z;
     }
+}
+
+void ProgramState::setUpLights()
+{
+    dirLight.direction = glm::vec3(0.0f,-10.0f, 0.0f);
+    dirLight.ambient = glm::vec3(0.15);
+    dirLight.diffuse = glm::vec3(0.4);
+    dirLight.specular = glm::vec3(0.5);
+
+    spotLight.position = glm::vec3(camera.Position);
+    spotLight.direction = glm::vec3(0.0f, -1.0f, -3);
+    spotLight.ambient = glm::vec3( 0.04f, 0.04f, 0.04f);
+    spotLight.diffuse = glm::vec3(0.4f, 0.85f, 0.4f);
+    spotLight.specular = glm::vec3(0.4f, 0.85f, 0.4f);
+    spotLight.constant = 1.0f;
+    spotLight.linear = 0.09;
+    spotLight.quadratic = 0.032;
+    spotLight.cutOff = glm::cos(glm::radians(5.0f));
+    spotLight.outerCutOff = glm::cos(glm::radians(7.5f));
+
+    pointLight.position = glm::vec3(camera.Position);
+    pointLight.direction = glm::vec3(0.0f, -1.0f, -3);
+    pointLight.ambient = glm::vec3( 0.04f, 0.04f, 0.04f);
+    pointLight.diffuse = glm::vec3(0.4f, 0.85f, 0.4f);
+    pointLight.specular = glm::vec3(0.4f, 0.85f, 0.4f);
+    pointLight.constant = 1.0f;
+    pointLight.linear = 0.09;
+    pointLight.quadratic = 0.032;
+
 }
 
 ProgramState *programState;
@@ -223,7 +299,6 @@ int main() {
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 330 core");
 
-    setUpLights();
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
@@ -323,6 +398,9 @@ int main() {
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6*sizeof(float)));
     glEnableVertexAttribArray(2);
 
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
     //cube data
     unsigned int cubeVAO, cubeVBO;
     glGenVertexArrays(1, &cubeVAO);
@@ -416,6 +494,7 @@ int main() {
         // ------
         glClearColor(programState->clearColor.r, programState->clearColor.g, programState->clearColor.b, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glBindVertexArray(planeVAO);
         planeShader.use();
         planeShader.setInt("planeTexture", 0);
 
@@ -427,20 +506,21 @@ int main() {
         planeShader.setMat4("projection", projection);
         planeShader.setMat4("view", view);
         setUpShaderLights(planeShader);
-        glBindVertexArray(planeVAO);
+
         for(unsigned int i = 0; i< 10; i++){
             glm::mat4 model = glm::mat4(1.0f);
             model = glm::translate(model, glm::vec3(0.0f,0.0f,-2.0f * i - 1.0f));
             planeShader.setMat4("model", model);
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         }
+        glBindVertexArray(cubeVAO);
         cubeShader.use();
         cubeShader.setInt("cubeTexture", 1);
 
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, cubeTexture);
 
-        glBindVertexArray(cubeVAO);
+
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
 
@@ -498,6 +578,8 @@ int main() {
         modelShader.setMat4("projection", projection);
         modelShader.setMat4("view", view);
         modelShader.setMat4("model", model);
+        setUpShaderLights(modelShader);
+
 
         objectModel.Draw(modelShader);
         glDisable(GL_DEPTH_TEST);
@@ -538,15 +620,6 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
     if(key == GLFW_KEY_F1 && action == GLFW_PRESS){
         programState->ImGuiEnabled = !programState->ImGuiEnabled;
     }
-
-//    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-//        camera.ProcessKeyboard(FORWARD, deltaTime);
-//    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-//        camera.ProcessKeyboard(BACKWARD, deltaTime);
-//    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-//        camera.ProcessKeyboard(LEFT, deltaTime);
-//    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-//        camera.ProcessKeyboard(RIGHT, deltaTime);
 }
 
 // process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
@@ -579,29 +652,10 @@ void mouse_callback(GLFWwindow *window, double xpos, double ypos) {
     lastX = xpos;
     lastY = ypos;
 
-    camera.ProcessMouseMovement(xoffset, yoffset);
 }
 
 void scroll_callback(GLFWwindow *window, double xoffset, double yoffset) {
     camera.ProcessMouseScroll(yoffset);
-}
-
-void setUpLights(){
-    programState->dirLight.direction = glm::vec3(0.0f,-10.0f, 0.0f);
-    programState->dirLight.ambient = glm::vec3(0.15);
-    programState->dirLight.diffuse = glm::vec3(0.4);
-    programState->dirLight.specular = glm::vec3(0.5);
-
-    programState->spotLight.position = glm::vec3(camera.Position);
-    programState->spotLight.direction = glm::vec3(camera.Front);
-    programState->spotLight.ambient = glm::vec3( 0.04f, 0.04f, 0.04f);
-    programState->spotLight.diffuse = glm::vec3(1.0f, 1.0f, 1.0f);
-    programState->spotLight.specular = glm::vec3(1.0f, 1.0f, 1.0f);
-    programState->spotLight.constant = 1.0f;
-    programState->spotLight.linear = 0.09;
-    programState->spotLight.quadratic = 0.032;
-    programState->spotLight.cutOff = glm::cos(glm::radians(30.0f));
-    programState->spotLight.outerCutOff = glm::cos(glm::radians(40.0f));
 }
 
 void setUpShaderLights(Shader shader){
@@ -620,6 +674,15 @@ void setUpShaderLights(Shader shader){
     shader.setFloat("spotLight.quadratic", programState->spotLight.quadratic);
     shader.setFloat("spotLight.cutOff", programState->spotLight.cutOff);
     shader.setFloat("spotLight.outerCutOff", programState->spotLight.outerCutOff);
+
+    shader.setVec3("pointLight.position",programState->pointLight.position);
+    shader.setVec3("pointLight.direction",programState->pointLight.direction);
+    shader.setVec3("pointLight.ambient", programState->pointLight.ambient);
+    shader.setVec3("pointLight.diffuse", programState->pointLight.diffuse);
+    shader.setVec3("pointLight.specular", programState->pointLight.specular);
+    shader.setFloat("pointLight.constant", programState->pointLight.constant);
+    shader.setFloat("pointLight.linear", programState->pointLight.linear);
+    shader.setFloat("pointLight.quadratic", programState->pointLight.quadratic);
 
     shader.setVec3("viewPos", camera.Position);
 }
@@ -657,6 +720,15 @@ void drawImGui()
         ImGui::DragFloat("spotLight.constant", (float*) &programState->spotLight.constant, 0.05, 0.0, 1.0);
         ImGui::DragFloat("spotLight.linear", (float*) &programState->spotLight.linear, 0.05, 0.0, 1.0);
         ImGui::DragFloat("spotLight.quadratic", (float *) &programState->spotLight.quadratic, 0.05, 0.0, 1.0);
+
+        ImGui::DragFloat3("pointLight.position", (float*)&(programState->pointLight.position));
+        ImGui::DragFloat3("pointLight.direction", (float*)&(programState->pointLight.direction));
+        ImGui::DragFloat3("pointLight.ambient", (float*) &(programState->pointLight.ambient), 0.05, 0.0, 1.0);
+        ImGui::DragFloat3("pointLight.diffuse", (float*) &(programState->pointLight.diffuse), 0.05, 0.0, 1.0);
+        ImGui::DragFloat3("pointLight.specular", (float*) &(programState->pointLight.specular), 0.05, 0.0, 1.0);
+        ImGui::DragFloat("pointLight.constant", (float*) &programState->pointLight.constant, 0.05, 0.0, 1.0);
+        ImGui::DragFloat("pointLight.linear", (float*) &programState->pointLight.linear, 0.05, 0.0, 1.0);
+        ImGui::DragFloat("pointLight.quadratic", (float *) &programState->pointLight.quadratic, 0.05, 0.0, 1.0);
 
         ImGui::End();
     }
