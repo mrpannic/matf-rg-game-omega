@@ -309,7 +309,7 @@ int main() {
 
         // render
         // ------
-        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+        glClearColor(programState->clearColor.r, programState->clearColor.g, programState->clearColor.b, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         planeShader.use();
         planeShader.setInt("planeTexture", 0);
@@ -401,10 +401,17 @@ int main() {
         glDisable(GL_CULL_FACE);
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
+        if(programState->ImGuiEnabled){
+            drawImGui();
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        }
+        else
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
-
+    programState->SaveToFile("resources/program_state.txt");
     cubes.clear();
     // glfw: terminate, clearing all previously allocated GLFW resources.
     // ------------------------------------------------------------------
@@ -424,6 +431,19 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
     if(key == GLFW_KEY_R && action == GLFW_PRESS){
         resetGame();
     }
+
+    if(key == GLFW_KEY_F1 && action == GLFW_PRESS){
+        programState->ImGuiEnabled = !programState->ImGuiEnabled;
+    }
+
+//    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+//        camera.ProcessKeyboard(FORWARD, deltaTime);
+//    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+//        camera.ProcessKeyboard(BACKWARD, deltaTime);
+//    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+//        camera.ProcessKeyboard(LEFT, deltaTime);
+//    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+//        camera.ProcessKeyboard(RIGHT, deltaTime);
 }
 
 // process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
@@ -455,44 +475,91 @@ void mouse_callback(GLFWwindow *window, double xpos, double ypos) {
 
     lastX = xpos;
     lastY = ypos;
+
+    camera.ProcessMouseMovement(xoffset, yoffset);
+}
+
+void scroll_callback(GLFWwindow *window, double xoffset, double yoffset) {
+    camera.ProcessMouseScroll(yoffset);
 }
 
 void setUpLights(){
-    dirLight.direction = glm::vec3(0.0f, -10.0f, 0.0f);
-    dirLight.ambient = glm::vec3(0.15f, 0.15f, 0.15f);
-    dirLight.diffuse = glm::vec3(0.4f, 0.4f, 0.4f);
-    dirLight.specular = glm::vec3(0.5f, 0.5f, 0.5f);
+    programState->dirLight.direction = glm::vec3(0.0f,-10.0f, 0.0f);
+    programState->dirLight.ambient = glm::vec3(0.15);
+    programState->dirLight.diffuse = glm::vec3(0.4);
+    programState->dirLight.specular = glm::vec3(0.5);
 
-    spotLight.position = glm::vec3(0.0f,1.0f,7.0f);
-    spotLight.direction = glm::vec3(0.0f, 0.0f, -3.0f);
-    spotLight.ambient = glm::vec3( 0.04f, 0.04f, 0.04f);
-    spotLight.diffuse = glm::vec3(1.0f, 1.0f, 1.0f);
-    spotLight.specular = glm::vec3(1.0f, 1.0f, 1.0f);
-    spotLight.constant = 1.0f;
-    spotLight.linear = 0.09;
-    spotLight.quadratic = 0.032;
-    spotLight.cutOff = glm::cos(glm::radians(10.0f));
-    spotLight.outerCutOff = glm::cos(glm::radians(15.0f));
+    programState->spotLight.position = glm::vec3(camera.Position);
+    programState->spotLight.direction = glm::vec3(camera.Front);
+    programState->spotLight.ambient = glm::vec3( 0.04f, 0.04f, 0.04f);
+    programState->spotLight.diffuse = glm::vec3(1.0f, 1.0f, 1.0f);
+    programState->spotLight.specular = glm::vec3(1.0f, 1.0f, 1.0f);
+    programState->spotLight.constant = 1.0f;
+    programState->spotLight.linear = 0.09;
+    programState->spotLight.quadratic = 0.032;
+    programState->spotLight.cutOff = glm::cos(glm::radians(30.0f));
+    programState->spotLight.outerCutOff = glm::cos(glm::radians(40.0f));
 }
 
 void setUpShaderLights(Shader shader){
-    shader.setVec3("dirLight.direction", dirLight.direction);
-    shader.setVec3("dirLight.ambient", dirLight.ambient);
-    shader.setVec3("dirLight.diffuse", dirLight.diffuse);
-    shader.setVec3("dirLight.specular", dirLight.specular);
+    shader.setVec3("dirLight.direction",programState->dirLight.direction);
+    shader.setVec3("dirLight.ambient", programState->dirLight.ambient);
+    shader.setVec3("dirLight.diffuse", programState->dirLight.diffuse);
+    shader.setVec3("dirLight.specular", programState->dirLight.specular);
 
-    shader.setVec3("spotLight.position", spotLight.position);
-    shader.setVec3("spotLight.direction", spotLight.direction);
-    shader.setVec3("spotLight.ambient", spotLight.ambient);
-    shader.setVec3("spotLight.diffuse", spotLight.diffuse);
-    shader.setVec3("spotLight.specular", spotLight.specular);
-    shader.setFloat("spotLight.constant", spotLight.constant);
-    shader.setFloat("spotLight.linear", spotLight.linear);
-    shader.setFloat("spotLight.quadratic", spotLight.quadratic);
-    shader.setFloat("spotLight.cutOff", spotLight.cutOff);
-    shader.setFloat("spotLight.outerCutOff", spotLight.outerCutOff);
+    shader.setVec3("spotLight.position",programState->spotLight.position);
+    shader.setVec3("spotLight.direction",programState->spotLight.direction);
+    shader.setVec3("spotLight.ambient", programState->spotLight.ambient);
+    shader.setVec3("spotLight.diffuse", programState->spotLight.diffuse);
+    shader.setVec3("spotLight.specular", programState->spotLight.specular);
+    shader.setFloat("spotLight.constant", programState->spotLight.constant);
+    shader.setFloat("spotLight.linear", programState->spotLight.linear);
+    shader.setFloat("spotLight.quadratic", programState->spotLight.quadratic);
+    shader.setFloat("spotLight.cutOff", programState->spotLight.cutOff);
+    shader.setFloat("spotLight.outerCutOff", programState->spotLight.outerCutOff);
 
     shader.setVec3("viewPos", camera.Position);
+}
+
+void drawImGui()
+{
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+
+    {
+        ImGui::Begin("Camera info");
+        const Camera& c = camera;
+        ImGui::Text("Camera position: (%f, %f, %f)", c.Position.x, c.Position.y, c.Position.z);
+        ImGui::Text("(Yaw, Pitch): (%f, %f)", c.Yaw, c.Pitch);
+        ImGui::Text("Camera front: (%f, %f, %f)", c.Front.x, c.Front.y, c.Front.z);
+//        ImGui::Checkbox("Camera mouse update", &programState->CameraMouseMovementUpdateEnabled);
+        ImGui::End();
+    }
+
+    {
+        ImGui::Begin("Settings");
+        ImGui::ColorEdit3("Background color", (float *) &programState->clearColor);
+
+        ImGui::DragFloat3("dirLight.direction", (float*) &(programState->dirLight.direction));
+        ImGui::DragFloat3("dirLight.ambient", (float*) &(programState->dirLight.ambient), 0.05, 0.0, 1.0);
+        ImGui::DragFloat3("dirLight.diffuse", (float*) &(programState->dirLight.diffuse), 0.05, 0.0, 1.0);
+        ImGui::DragFloat3("dirLight.specular", (float*) &(programState->dirLight.specular), 0.05, 0.0, 1.0);
+
+        ImGui::DragFloat3("spotlight.position", (float*)&(programState->spotLight.position));
+        ImGui::DragFloat3("spotlight.direction", (float*)&(programState->spotLight.direction));
+        ImGui::DragFloat3("spotLight.ambient", (float*) &(programState->spotLight.ambient), 0.05, 0.0, 1.0);
+        ImGui::DragFloat3("spotLight.diffuse", (float*) &(programState->spotLight.diffuse), 0.05, 0.0, 1.0);
+        ImGui::DragFloat3("spotLight.specular", (float*) &(programState->spotLight.specular), 0.05, 0.0, 1.0);
+        ImGui::DragFloat("spotLight.constant", (float*) &programState->spotLight.constant, 0.05, 0.0, 1.0);
+        ImGui::DragFloat("spotLight.linear", (float*) &programState->spotLight.linear, 0.05, 0.0, 1.0);
+        ImGui::DragFloat("spotLight.quadratic", (float *) &programState->spotLight.quadratic, 0.05, 0.0, 1.0);
+
+        ImGui::End();
+    }
+
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
 int comparableFloat(float val){
