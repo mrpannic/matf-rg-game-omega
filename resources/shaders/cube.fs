@@ -64,7 +64,7 @@ void main()
     result += calcPointLight(pointLight, norm, fs_in.WorldFragPos.xyz, viewDir);
     result += calcSpotLight(spotLight, norm, fs_in.WorldFragPos.xyz, viewDir);
 
-    FragColor = vec4(result, 1.0);
+    FragColor = vec4(result, 0.6);
 }
 
 vec3 calcDirLight(DirLight light, vec3 normal, vec3 viewDir)
