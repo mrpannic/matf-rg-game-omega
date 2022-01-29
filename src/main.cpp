@@ -102,12 +102,18 @@ struct ProgramState {
     ProgramState() { setUpLights();
         clearColor = glm::vec3(0.604575, 0.65498, 0.906863);
         ImGuiEnabled = false;
+        windowWidth = SCR_WIDTH;
+        windowHeight = SCR_HEIGHT;
+        sampleNum = 4;
     }
     glm::vec3 clearColor;
     bool ImGuiEnabled;
     DirLight dirLight;
     SpotLight spotLight;
     PointLight pointLight;
+    int windowWidth;
+    int windowHeight;
+    int sampleNum;
 
     void SaveToFile(std::string filename);
 
@@ -163,7 +169,8 @@ void ProgramState::SaveToFile(std::string filename) {
         << dirLight.diffuse.z << '\n'
         << dirLight.specular.x << '\n'
         << dirLight.specular.y << '\n'
-        << dirLight.specular.z << '\n';
+        << dirLight.specular.z << '\n'
+        << sampleNum;
 }
 
 void ProgramState::LoadFromFile(std::string filename) {
@@ -214,7 +221,8 @@ void ProgramState::LoadFromFile(std::string filename) {
            >> dirLight.diffuse.z
            >> dirLight.specular.x
            >> dirLight.specular.y
-           >> dirLight.specular.z;
+           >> dirLight.specular.z
+           >> sampleNum;
     }
 }
 
@@ -305,6 +313,7 @@ int main() {
     Shader planeShader("resources/shaders/plane.vs", "resources/shaders/plane.fs");
     Shader cubeShader("resources/shaders/cube.vs", "resources/shaders/cube.fs");
     Shader modelShader("resources/shaders/model.vs", "resources/shaders/model.fs");
+    Shader aaShader("resources/shaders/aa.vs", "resources/shaders/aa.fs");
 
     Model objectModel("resources/objects/gazelle_model/10020_Gazelle_v04.obj");
 
@@ -372,6 +381,16 @@ int main() {
             -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f,  1.0f
     };
 
+    float quadAAVertices[] = {
+            -1.0f, 1.0f, 0.0f, 1.0f,
+            -1.0f, -1.0f, 0.0f, 0.0f,
+            1.0f, -1.0f, 1.0f, 0.0f,
+
+            -1.0f, 1.0f, 0.0f, 1.0f,
+            1.0f, -1.0f, 1.0f, 0.0f,
+            1.0f, 1.0f, 1.0f, 1.0f
+    };
+
     //plane data
     unsigned int planeVAO, planeVBO, planeEBO;
 
@@ -422,6 +441,55 @@ int main() {
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
+
+    unsigned int quadVAO, quadVBO;
+
+    glGenVertexArrays(1, &quadVAO);
+    glGenBuffers(1, &quadVBO);
+
+    glBindVertexArray(quadVAO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quadAAVertices), &quadAAVertices, GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    //MSAA framebuffer
+    unsigned int framebuffer;
+    glGenFramebuffers(1, &framebuffer);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+
+    //color attachment
+    int setSampleNum = programState->sampleNum;
+    unsigned int textureColorBufferMultiSampled;
+    glGenTextures(1, &textureColorBufferMultiSampled);
+    glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, textureColorBufferMultiSampled);
+    glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, setSampleNum, GL_RGB, SCR_WIDTH, SCR_HEIGHT, GL_TRUE);
+    glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
+
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, textureColorBufferMultiSampled, 0);
+
+    //depth and stencil buffer
+    unsigned int rbo;
+    glGenRenderbuffers(1, &rbo);
+    glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+    glRenderbufferStorageMultisample(GL_RENDERBUFFER, setSampleNum, GL_DEPTH24_STENCIL8, SCR_WIDTH, SCR_HEIGHT);
+    glBindRenderbuffer(GL_RENDERBUFFER, 0);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER,GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+
+    if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::cerr << "ERROR::FRAMEBUFFER incomplete";
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     // tell stb_image.h to flip loaded texture's on the y-axis (before loading model).
     stbi_set_flip_vertically_on_load(true);
@@ -494,7 +562,11 @@ int main() {
         // ------
         glClearColor(programState->clearColor.r, programState->clearColor.g, programState->clearColor.b, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glBindVertexArray(planeVAO);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+        glClearColor(programState->clearColor.r, programState->clearColor.g, programState->clearColor.b, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+         glBindVertexArray(planeVAO);
         planeShader.use();
         planeShader.setInt("planeTexture", 0);
 
@@ -584,6 +656,21 @@ int main() {
         objectModel.Draw(modelShader);
         glDisable(GL_DEPTH_TEST);
         glDisable(GL_CULL_FACE);
+
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        aaShader.use();
+        aaShader.setInt("windowWidth", programState->windowWidth);
+        aaShader.setInt("windowHeight", programState->windowHeight);
+        aaShader.setInt("sampleNum", setSampleNum);
+        glBindVertexArray(quadVAO);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, textureColorBufferMultiSampled);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
         if(programState->ImGuiEnabled){
@@ -634,6 +721,8 @@ void processInput(GLFWwindow *window) {
 void framebuffer_size_callback(GLFWwindow *window, int width, int height) {
     // make sure the viewport matches the new window dimensions; note that width and
     // height will be significantly larger than specified on retina displays.
+    programState->windowWidth = width;
+    programState->windowHeight = height;
     glViewport(0, 0, width, height);
 }
 
@@ -730,6 +819,8 @@ void drawImGui()
         ImGui::DragFloat("pointLight.linear", (float*) &programState->pointLight.linear, 0.05, 0.0, 1.0);
         ImGui::DragFloat("pointLight.quadratic", (float *) &programState->pointLight.quadratic, 0.05, 0.0, 1.0);
 
+        ImGui::DragInt("MSAA sample number (restart to take effect)", (int*)&programState->sampleNum, 2, 1, 8);
+
         ImGui::End();
     }
 
@@ -742,5 +833,8 @@ int comparableFloat(float val){
 }
 
 void resetGame(){
+    if(collided)
+        cubes.clear();
+
     collided = false;
 }
