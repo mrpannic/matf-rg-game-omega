@@ -463,10 +463,10 @@ int main() {
     glBindVertexArray(0);
 
     //MSAA framebuffer
-    unsigned int framebuffer;
-    glGenFramebuffers(1, &framebuffer);
+    unsigned int msaaFBO;
+    glGenFramebuffers(1, &msaaFBO);
 
-    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, msaaFBO);
 
     //color attachment
     int setSampleNum = programState->sampleNum;
@@ -487,9 +487,23 @@ int main() {
     glFramebufferRenderbuffer(GL_FRAMEBUFFER,GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
 
     if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-        std::cerr << "ERROR::FRAMEBUFFER incomplete";
+        std::cerr << "ERROR::MSAA_FRAMEBUFFER incomplete";
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    //intermediate fbo
+    unsigned int imFBO;
+    glGenFramebuffers(1, &imFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, imFBO);
+
+    unsigned int screenTexture;
+    glGenTextures(1, &screenTexture);
+    glBindTexture(GL_TEXTURE_2D, screenTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, screenTexture, 0);
+
 
     // tell stb_image.h to flip loaded texture's on the y-axis (before loading model).
     stbi_set_flip_vertically_on_load(true);
@@ -563,7 +577,7 @@ int main() {
         glClearColor(programState->clearColor.r, programState->clearColor.g, programState->clearColor.b, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+        glBindFramebuffer(GL_FRAMEBUFFER, msaaFBO);
         glClearColor(programState->clearColor.r, programState->clearColor.g, programState->clearColor.b, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
          glBindVertexArray(planeVAO);
@@ -654,6 +668,11 @@ int main() {
 
 
         objectModel.Draw(modelShader);
+
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, msaaFBO);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, imFBO);
+        glBlitFramebuffer(0, 0, SCR_WIDTH, SCR_HEIGHT, 0, 0, SCR_WIDTH, SCR_HEIGHT, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
         glDisable(GL_DEPTH_TEST);
         glDisable(GL_CULL_FACE);
 
@@ -663,12 +682,10 @@ int main() {
         glClear(GL_COLOR_BUFFER_BIT);
 
         aaShader.use();
-        aaShader.setInt("windowWidth", programState->windowWidth);
-        aaShader.setInt("windowHeight", programState->windowHeight);
-        aaShader.setInt("sampleNum", setSampleNum);
+        aaShader.setInt("screenTexture", 0);
         glBindVertexArray(quadVAO);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, textureColorBufferMultiSampled);
+        glBindTexture(GL_TEXTURE_2D, screenTexture);
         glDrawArrays(GL_TRIANGLES, 0, 6);
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
@@ -782,45 +799,46 @@ void drawImGui()
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    {
-        ImGui::Begin("Camera info");
-        const Camera& c = camera;
-        ImGui::Text("Camera position: (%f, %f, %f)", c.Position.x, c.Position.y, c.Position.z);
-        ImGui::Text("(Yaw, Pitch): (%f, %f)", c.Yaw, c.Pitch);
-        ImGui::Text("Camera front: (%f, %f, %f)", c.Front.x, c.Front.y, c.Front.z);
-//        ImGui::Checkbox("Camera mouse update", &programState->CameraMouseMovementUpdateEnabled);
-        ImGui::End();
-    }
 
     {
         ImGui::Begin("Settings");
         ImGui::ColorEdit3("Background color", (float *) &programState->clearColor);
-
-        ImGui::DragFloat3("dirLight.direction", (float*) &(programState->dirLight.direction));
-        ImGui::DragFloat3("dirLight.ambient", (float*) &(programState->dirLight.ambient), 0.05, 0.0, 1.0);
-        ImGui::DragFloat3("dirLight.diffuse", (float*) &(programState->dirLight.diffuse), 0.05, 0.0, 1.0);
-        ImGui::DragFloat3("dirLight.specular", (float*) &(programState->dirLight.specular), 0.05, 0.0, 1.0);
-
-        ImGui::DragFloat3("spotlight.position", (float*)&(programState->spotLight.position));
-        ImGui::DragFloat3("spotlight.direction", (float*)&(programState->spotLight.direction));
-        ImGui::DragFloat3("spotLight.ambient", (float*) &(programState->spotLight.ambient), 0.05, 0.0, 1.0);
-        ImGui::DragFloat3("spotLight.diffuse", (float*) &(programState->spotLight.diffuse), 0.05, 0.0, 1.0);
-        ImGui::DragFloat3("spotLight.specular", (float*) &(programState->spotLight.specular), 0.05, 0.0, 1.0);
-        ImGui::DragFloat("spotLight.constant", (float*) &programState->spotLight.constant, 0.05, 0.0, 1.0);
-        ImGui::DragFloat("spotLight.linear", (float*) &programState->spotLight.linear, 0.05, 0.0, 1.0);
-        ImGui::DragFloat("spotLight.quadratic", (float *) &programState->spotLight.quadratic, 0.05, 0.0, 1.0);
-
-        ImGui::DragFloat3("pointLight.position", (float*)&(programState->pointLight.position));
-        ImGui::DragFloat3("pointLight.direction", (float*)&(programState->pointLight.direction));
-        ImGui::DragFloat3("pointLight.ambient", (float*) &(programState->pointLight.ambient), 0.05, 0.0, 1.0);
-        ImGui::DragFloat3("pointLight.diffuse", (float*) &(programState->pointLight.diffuse), 0.05, 0.0, 1.0);
-        ImGui::DragFloat3("pointLight.specular", (float*) &(programState->pointLight.specular), 0.05, 0.0, 1.0);
-        ImGui::DragFloat("pointLight.constant", (float*) &programState->pointLight.constant, 0.05, 0.0, 1.0);
-        ImGui::DragFloat("pointLight.linear", (float*) &programState->pointLight.linear, 0.05, 0.0, 1.0);
-        ImGui::DragFloat("pointLight.quadratic", (float *) &programState->pointLight.quadratic, 0.05, 0.0, 1.0);
-
-        ImGui::DragInt("MSAA sample number (restart to take effect)", (int*)&programState->sampleNum, 2, 1, 8);
-
+        ImGui::DragInt("Sample number", (int *) &programState->sampleNum, 2, 1, 8);
+//        ImGui::DragFloat("Exposure", (float *) &programState->exposure);
+//        ImGui::Checkbox("Enable HDR", (bool *) &programState->hdrEnabled);
+//        ImGui::Checkbox("Enable Bloom", (bool *) &programState->bloomEnabled);
+        ImGui::End();
+    }
+    {
+        ImGui::Begin("dirLight settings");
+        ImGui::DragFloat3("direction", (float *) &(programState->dirLight.direction));
+        ImGui::DragFloat3("ambient", (float *) &(programState->dirLight.ambient), 0.05, 0.0, 1.0);
+        ImGui::DragFloat3("diffuse", (float *) &(programState->dirLight.diffuse), 0.05, 0.0, 1.0);
+        ImGui::DragFloat3("specular", (float *) &(programState->dirLight.specular), 0.05, 0.0, 1.0);
+        ImGui::End();
+    }
+    {
+        ImGui::Begin("spotLight settings");
+        ImGui::DragFloat3("position", (float *) &(programState->spotLight.position));
+        ImGui::DragFloat3("direction", (float *) &(programState->spotLight.direction));
+        ImGui::DragFloat3("ambient", (float *) &(programState->spotLight.ambient), 0.05, 0.0, 1.0);
+        ImGui::DragFloat3("diffuse", (float *) &(programState->spotLight.diffuse), 0.05, 0.0, 1.0);
+        ImGui::DragFloat3("specular", (float *) &(programState->spotLight.specular), 0.05, 0.0, 1.0);
+        ImGui::DragFloat("constant", (float *) &programState->spotLight.constant, 0.05, 0.0, 1.0);
+        ImGui::DragFloat("linear", (float *) &programState->spotLight.linear, 0.05, 0.0, 1.0);
+        ImGui::DragFloat("quadratic", (float *) &programState->spotLight.quadratic, 0.05, 0.0, 1.0);
+        ImGui::End();
+    }
+    {
+        ImGui::Begin("pointLight settings");
+        ImGui::DragFloat3("position", (float *) &(programState->pointLight.position));
+        ImGui::DragFloat3("direction", (float *) &(programState->pointLight.direction));
+        ImGui::DragFloat3("ambient", (float *) &(programState->pointLight.ambient), 0.05, 0.0, 1.0);
+        ImGui::DragFloat3("diffuse", (float *) &(programState->pointLight.diffuse), 0.05, 0.0, 1.0);
+        ImGui::DragFloat3("specular", (float *) &(programState->pointLight.specular), 0.05, 0.0, 1.0);
+        ImGui::DragFloat("constant", (float *) &programState->pointLight.constant, 0.05, 0.0, 1.0);
+        ImGui::DragFloat("linear", (float *) &programState->pointLight.linear, 0.05, 0.0, 1.0);
+        ImGui::DragFloat("quadratic", (float *) &programState->pointLight.quadratic, 0.05, 0.0, 1.0);
         ImGui::End();
     }
 

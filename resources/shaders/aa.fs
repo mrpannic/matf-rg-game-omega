@@ -1,23 +1,12 @@
 #version 330 core
 
-uniform sampler2DMS msaa_texture;
+uniform sampler2D screenTexture;
 in vec2 TexCoords;
 
-uniform int windowWidth;
-uniform int windowHeight;
-uniform int sampleNum;
 
 out vec4 FragCol;
 void main()
 {
-    ivec2 viewPortDim = ivec2(windowWidth, windowHeight);
-    ivec2 coord = ivec2(viewPortDim * TexCoords);
-    vec3 col = vec3(0.0);
-
-    for(int i = 0; i < sampleNum; i++){
-        col += texelFetch(msaa_texture, coord, i).rgb;
-    }
-
-    col *= 1.0/sampleNum;
+    vec3 col = texture(screenTexture, TexCoords).rgb;
     FragCol = vec4(col, 1.0);
 }
