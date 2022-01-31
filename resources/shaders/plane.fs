@@ -1,5 +1,8 @@
 #version 330 core
 
+layout (location = 0) out vec4 FragColor;
+layout (location = 1) out vec4 BrightColor;
+
 struct DirLight {
     vec3 direction;
 
@@ -49,8 +52,6 @@ uniform SpotLight spotLight;
 uniform DirLight dirLight;
 uniform PointLight pointLight;
 
-out vec4 FragColor;
-
 vec3 calcDirLight(DirLight light, vec3 normal, vec3 viewDir);
 vec3 calcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir);
 vec3 calcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir);
@@ -62,6 +63,12 @@ void main()
 
     vec3 result = calcDirLight(dirLight, norm, viewDir);
     result += calcSpotLight(spotLight, norm, fs_in.WorldFragPos.xyz, viewDir);
+
+    float brightness = dot(result, vec3(0.2126, 0.7152, 0.0722));
+    if(brightness > 1.0)
+        BrightColor = vec4(result, 1.0);
+    else
+        BrightColor = vec4(0.0, 0.0, 0.0, 1.0);
 
     FragColor = vec4(result, 1.0);
 }

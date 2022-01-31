@@ -39,6 +39,8 @@ int comparableFloat(float val);
 
 void resetGame();
 
+void renderQuad();
+
 // settings
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
@@ -105,6 +107,9 @@ struct ProgramState {
         windowWidth = SCR_WIDTH;
         windowHeight = SCR_HEIGHT;
         sampleNum = 4;
+        bloom = false;
+        exposure = 1.0;
+        quadVAO = -1;
     }
     glm::vec3 clearColor;
     bool ImGuiEnabled;
@@ -114,6 +119,9 @@ struct ProgramState {
     int windowWidth;
     int windowHeight;
     int sampleNum;
+    bool bloom;
+    float exposure;
+    unsigned int quadVAO;
 
     void SaveToFile(std::string filename);
 
@@ -313,7 +321,8 @@ int main() {
     Shader planeShader("resources/shaders/plane.vs", "resources/shaders/plane.fs");
     Shader cubeShader("resources/shaders/cube.vs", "resources/shaders/cube.fs");
     Shader modelShader("resources/shaders/model.vs", "resources/shaders/model.fs");
-    Shader aaShader("resources/shaders/aa.vs", "resources/shaders/aa.fs");
+    Shader blurShader("resources/shaders/blur.vs", "resources/shaders/blur.fs");
+    Shader screenShader("resources/shaders/screen.vs", "resources/shaders/screen.fs");
 
     Model objectModel("resources/objects/gazelle_model/10020_Gazelle_v04.obj");
 
@@ -446,9 +455,8 @@ int main() {
 
     glGenVertexArrays(1, &quadVAO);
     glGenBuffers(1, &quadVBO);
-
     glBindVertexArray(quadVAO);
-
+    programState->quadVAO = quadVAO;
     glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(quadAAVertices), &quadAAVertices, GL_STATIC_DRAW);
 
@@ -470,13 +478,17 @@ int main() {
 
     //color attachment
     int setSampleNum = programState->sampleNum;
-    unsigned int textureColorBufferMultiSampled;
-    glGenTextures(1, &textureColorBufferMultiSampled);
-    glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, textureColorBufferMultiSampled);
-    glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, setSampleNum, GL_RGB, SCR_WIDTH, SCR_HEIGHT, GL_TRUE);
-    glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
+    unsigned int texturesColorBufferMultiSampled[2];
+    glGenTextures(2, texturesColorBufferMultiSampled);
 
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, textureColorBufferMultiSampled, 0);
+    for(unsigned int i = 0; i < 2; ++i){
+        glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, texturesColorBufferMultiSampled[i]);
+        glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, setSampleNum, GL_RGBA16F, SCR_WIDTH, SCR_HEIGHT, GL_TRUE);
+        glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D_MULTISAMPLE, texturesColorBufferMultiSampled[i], 0);
+    }
+    unsigned int attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
+    glDrawBuffers(2, attachments);
 
     //depth and stencil buffer
     unsigned int rbo;
@@ -496,14 +508,47 @@ int main() {
     glGenFramebuffers(1, &imFBO);
     glBindFramebuffer(GL_FRAMEBUFFER, imFBO);
 
-    unsigned int screenTexture;
-    glGenTextures(1, &screenTexture);
-    glBindTexture(GL_TEXTURE_2D, screenTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, screenTexture, 0);
+    unsigned int screenTextures[2];
+    glGenTextures(2, screenTextures);
+    for(unsigned int i = 0; i < 2; ++i){
+        glBindTexture(GL_TEXTURE_2D, screenTextures[i]);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, screenTextures[i], 0);
+        if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+            std::cerr << "ERROR::INTERMEDIATE_FRAMEBUFFER incomplete";
+    }
 
+    //intermediate fbo depth renderbuffer
+    unsigned int rboDepth;
+    glGenRenderbuffers(1, &rboDepth);
+    glBindRenderbuffer(GL_RENDERBUFFER, rboDepth);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, SCR_WIDTH, SCR_HEIGHT);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);
+
+    if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::cerr << "ERROR::INTERMEDIATE_FRAMEBUFFER incomplete";
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    //ping pong fbos
+    unsigned int pingpongFBO[2];
+    unsigned int pingpongColorBuffers[2];
+    glGenFramebuffers(2, pingpongFBO);
+    glGenTextures(2, pingpongColorBuffers);
+    for(unsigned int i = 0; i < 2; ++i){
+        glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO[i]);
+        glBindTexture(GL_TEXTURE_2D, pingpongColorBuffers[i]);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_FLOAT, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pingpongColorBuffers[i], 0);
+        if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+            std::cerr << "ERROR::PINGPONG_FRAMEBUFFER "  << i << "incomplete" << std::endl;
+    }
 
     // tell stb_image.h to flip loaded texture's on the y-axis (before loading model).
     stbi_set_flip_vertically_on_load(true);
@@ -526,7 +571,7 @@ int main() {
 
     if(data)
     {
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_SRGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
         glGenerateMipmap(GL_TEXTURE_2D);
     }
     else {
@@ -549,7 +594,7 @@ int main() {
 
     if(data)
     {
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_SRGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
         glGenerateMipmap(GL_TEXTURE_2D);
     }
     else {
@@ -593,7 +638,7 @@ int main() {
         planeShader.setMat4("view", view);
         setUpShaderLights(planeShader);
 
-        for(unsigned int i = 0; i< 10; i++){
+        for(unsigned int i = 0; i< 5; i++){
             glm::mat4 model = glm::mat4(1.0f);
             model = glm::translate(model, glm::vec3(0.0f,0.0f,-2.0f * i - 1.0f));
             planeShader.setMat4("model", model);
@@ -631,6 +676,7 @@ int main() {
             }
 
             if(zPosition + 0.3f >= 0.01f){
+                delete *cubeIt;
                 cubeIt = cubes.erase(cubeIt);
                 continue;
             }
@@ -676,16 +722,37 @@ int main() {
         glDisable(GL_DEPTH_TEST);
         glDisable(GL_CULL_FACE);
 
-
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        aaShader.use();
-        aaShader.setInt("screenTexture", 0);
+        //pingponging
+        bool horizontal = true, first_iteration = true;
+        unsigned int amount = 10;
+        blurShader.use();
+        blurShader.setInt("image", 0);
+        for(unsigned int i = 0; i < amount; ++i)
+        {
+            glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO[horizontal]);
+            blurShader.setInt("horizontal", horizontal);
+            glBindTexture(GL_TEXTURE_2D, first_iteration ? screenTextures[i] : pingpongColorBuffers[!horizontal]);
+            renderQuad();
+            horizontal = !horizontal;
+            if(first_iteration)
+                first_iteration = false;
+        }
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        screenShader.use();
+        screenShader.setInt("scene", 0);
+        screenShader.setInt("bloomBlur", 1);
+        screenShader.setInt("bloom", programState->bloom);
+        screenShader.setFloat("exposure", programState->exposure);
         glBindVertexArray(quadVAO);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, screenTexture);
+        glBindTexture(GL_TEXTURE_2D, screenTextures[0]);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, pingpongColorBuffers[!horizontal]);
         glDrawArrays(GL_TRIANGLES, 0, 6);
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
@@ -723,6 +790,10 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
 
     if(key == GLFW_KEY_F1 && action == GLFW_PRESS){
         programState->ImGuiEnabled = !programState->ImGuiEnabled;
+    }
+
+    if(key == GLFW_KEY_B && action == GLFW_PRESS){
+        programState->bloom = !programState->bloom;
     }
 }
 
@@ -804,27 +875,26 @@ void drawImGui()
         ImGui::Begin("Settings");
         ImGui::ColorEdit3("Background color", (float *) &programState->clearColor);
         ImGui::DragInt("Sample number", (int *) &programState->sampleNum, 2, 1, 8);
-//        ImGui::DragFloat("Exposure", (float *) &programState->exposure);
-//        ImGui::Checkbox("Enable HDR", (bool *) &programState->hdrEnabled);
-//        ImGui::Checkbox("Enable Bloom", (bool *) &programState->bloomEnabled);
+        ImGui::DragFloat("Exposure", (float *) &programState->exposure);
+        ImGui::Checkbox("Enable Bloom", (bool *) &programState->bloom);
         ImGui::End();
     }
     {
         ImGui::Begin("dirLight settings");
         ImGui::DragFloat3("direction", (float *) &(programState->dirLight.direction));
-        ImGui::DragFloat3("ambient", (float *) &(programState->dirLight.ambient), 0.05, 0.0, 1.0);
-        ImGui::DragFloat3("diffuse", (float *) &(programState->dirLight.diffuse), 0.05, 0.0, 1.0);
-        ImGui::DragFloat3("specular", (float *) &(programState->dirLight.specular), 0.05, 0.0, 1.0);
+        ImGui::DragFloat3("ambient", (float *) &(programState->dirLight.ambient), 0.05, 0.0);
+        ImGui::DragFloat3("diffuse", (float *) &(programState->dirLight.diffuse), 0.05, 0.0);
+        ImGui::DragFloat3("specular", (float *) &(programState->dirLight.specular), 0.05, 0.0);
         ImGui::End();
     }
     {
         ImGui::Begin("spotLight settings");
         ImGui::DragFloat3("position", (float *) &(programState->spotLight.position));
         ImGui::DragFloat3("direction", (float *) &(programState->spotLight.direction));
-        ImGui::DragFloat3("ambient", (float *) &(programState->spotLight.ambient), 0.05, 0.0, 1.0);
-        ImGui::DragFloat3("diffuse", (float *) &(programState->spotLight.diffuse), 0.05, 0.0, 1.0);
-        ImGui::DragFloat3("specular", (float *) &(programState->spotLight.specular), 0.05, 0.0, 1.0);
-        ImGui::DragFloat("constant", (float *) &programState->spotLight.constant, 0.05, 0.0, 1.0);
+        ImGui::DragFloat3("ambient", (float *) &(programState->spotLight.ambient), 0.05, 0.0);
+        ImGui::DragFloat3("diffuse", (float *) &(programState->spotLight.diffuse), 0.05, 0.0);
+        ImGui::DragFloat3("specular", (float *) &(programState->spotLight.specular), 0.05, 0.0);
+        ImGui::DragFloat("constant", (float *) &programState->spotLight.constant, 0.05, 0.0);
         ImGui::DragFloat("linear", (float *) &programState->spotLight.linear, 0.05, 0.0, 1.0);
         ImGui::DragFloat("quadratic", (float *) &programState->spotLight.quadratic, 0.05, 0.0, 1.0);
         ImGui::End();
@@ -851,8 +921,13 @@ int comparableFloat(float val){
 }
 
 void resetGame(){
-    if(collided)
-        cubes.clear();
-
+    cubes.clear();
     collided = false;
+}
+
+void renderQuad()
+{
+    glBindVertexArray(programState->quadVAO);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 6);
+    glBindVertexArray(0);
 }
