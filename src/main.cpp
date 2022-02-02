@@ -37,6 +37,8 @@ void drawImGui();
 
 void setUpShaderLights(Shader shader);
 
+void setMaterialAttributes(Shader shader, float shininess);
+
 int comparableFloat(float val);
 
 void resetGame();
@@ -79,7 +81,6 @@ struct SpotLight {
 
 struct PointLight {
     glm::vec3 position;
-    glm::vec3 direction;
 
     glm::vec3 ambient;
     glm::vec3 diffuse;
@@ -106,12 +107,13 @@ struct ProgramState {
     ProgramState() { setUpLights();
         clearColor = glm::vec3(0.604575, 0.65498, 0.906863);
         ImGuiEnabled = false;
-        windowWidth = SCR_WIDTH;
-        windowHeight = SCR_HEIGHT;
         sampleNum = 4;
         bloom = false;
         exposure = 1.0;
         quadVAO = -1;
+        cubeShininess = 32.0;
+        planeShininess = 32.0;
+        score = 0;
     }
     glm::vec3 clearColor;
     bool ImGuiEnabled;
@@ -124,6 +126,11 @@ struct ProgramState {
     bool bloom;
     float exposure;
     unsigned int quadVAO;
+    float cubeShininess;
+    float planeShininess;
+    bool loadSaved;
+    unsigned int score;
+    unsigned int highScore;
 
     void SaveToFile(std::string filename);
 
@@ -156,9 +163,6 @@ void ProgramState::SaveToFile(std::string filename) {
         << pointLight.position.x << '\n'
         << pointLight.position.y << '\n'
         << pointLight.position.z << '\n'
-        << pointLight.direction.x << '\n'
-        << pointLight.direction.y << '\n'
-        << pointLight.direction.z << '\n'
         << pointLight.ambient.x << '\n'
         << pointLight.ambient.y << '\n'
         << pointLight.ambient.z << '\n'
@@ -180,7 +184,9 @@ void ProgramState::SaveToFile(std::string filename) {
         << dirLight.specular.x << '\n'
         << dirLight.specular.y << '\n'
         << dirLight.specular.z << '\n'
-        << sampleNum;
+        << exposure << '\n'
+        << sampleNum << '\n'
+        << highScore;
 }
 
 void ProgramState::LoadFromFile(std::string filename) {
@@ -208,9 +214,6 @@ void ProgramState::LoadFromFile(std::string filename) {
            >> pointLight.position.x
            >> pointLight.position.y
            >> pointLight.position.z
-           >> pointLight.direction.x
-           >> pointLight.direction.y
-           >> pointLight.direction.z
            >> pointLight.ambient.x
            >> pointLight.ambient.y
            >> pointLight.ambient.z
@@ -232,33 +235,34 @@ void ProgramState::LoadFromFile(std::string filename) {
            >> dirLight.specular.x
            >> dirLight.specular.y
            >> dirLight.specular.z
-           >> sampleNum;
+           >> exposure
+           >> sampleNum
+           >> highScore;
     }
 }
 
 void ProgramState::setUpLights()
 {
-    dirLight.direction = glm::vec3(0.0f,-10.0f, 0.0f);
+    dirLight.direction = glm::vec3(0.0f,0.0f, 1.0f);
     dirLight.ambient = glm::vec3(0.15);
-    dirLight.diffuse = glm::vec3(0.4);
-    dirLight.specular = glm::vec3(0.5);
+    dirLight.diffuse = glm::vec3(0.4, 0.25, 0.7);
+    dirLight.specular = glm::vec3(0.5, 0.35, 0.2);
 
     spotLight.position = glm::vec3(camera.Position);
     spotLight.direction = glm::vec3(0.0f, -1.0f, -3);
     spotLight.ambient = glm::vec3( 0.04f, 0.04f, 0.04f);
-    spotLight.diffuse = glm::vec3(0.4f, 0.85f, 0.4f);
-    spotLight.specular = glm::vec3(0.4f, 0.85f, 0.4f);
+    spotLight.diffuse = glm::vec3(0.65f, 0.75f, 0.65f);
+    spotLight.specular = glm::vec3(0.25f, 0.85f, 0.5f);
     spotLight.constant = 1.0f;
     spotLight.linear = 0.09;
     spotLight.quadratic = 0.032;
     spotLight.cutOff = glm::cos(glm::radians(5.0f));
     spotLight.outerCutOff = glm::cos(glm::radians(7.5f));
 
-    pointLight.position = glm::vec3(camera.Position);
-    pointLight.direction = glm::vec3(0.0f, -1.0f, -3);
+    pointLight.position = glm::vec3(0.0, 1.0, -3.0);
     pointLight.ambient = glm::vec3( 0.04f, 0.04f, 0.04f);
-    pointLight.diffuse = glm::vec3(0.4f, 0.85f, 0.4f);
-    pointLight.specular = glm::vec3(0.4f, 0.85f, 0.4f);
+    pointLight.diffuse = glm::vec3(1.0f, 1.0f, 1.0f);
+    pointLight.specular = glm::vec3(1.0f, 1.0f, 1.0f);
     pointLight.constant = 1.0f;
     pointLight.linear = 0.09;
     pointLight.quadratic = 0.032;
@@ -305,6 +309,7 @@ int main() {
 
     programState = new ProgramState();
     programState->LoadFromFile("resources/program_state.txt");
+
     if (programState->ImGuiEnabled) {
         glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
     }
@@ -557,7 +562,8 @@ int main() {
 
     //Gen Textures
     unsigned int planeTexture = loadTexture("resources/textures/plane.JPG", true);
-    unsigned int cubeTexture = loadTexture("resources/textures/container.jpg", true);
+    unsigned int cubeTexture = loadTexture("resources/textures/container.png", true);
+    unsigned int cubeSpecTexture = loadTexture("resources/textures/container_specular.png", true);
 
 
     Cube* firstCube = new Cube();
@@ -584,10 +590,9 @@ int main() {
         glBindFramebuffer(GL_FRAMEBUFFER, msaaFBO);
         glClearColor(programState->clearColor.r, programState->clearColor.g, programState->clearColor.b, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-         glBindVertexArray(planeVAO);
+        glBindVertexArray(planeVAO);
         planeShader.use();
-        planeShader.setInt("planeTexture", 0);
-
+        setMaterialAttributes(planeShader, programState->planeShininess);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, planeTexture);
 
@@ -597,6 +602,7 @@ int main() {
         planeShader.setMat4("view", view);
         setUpShaderLights(planeShader);
 
+
         for(unsigned int i = 0; i< 5; i++){
             glm::mat4 model = glm::mat4(1.0f);
             model = glm::translate(model, glm::vec3(0.0f,0.0f,-2.0f * i - 1.0f));
@@ -604,22 +610,23 @@ int main() {
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         }
         glBindVertexArray(cubeVAO);
+
         cubeShader.use();
-        cubeShader.setInt("cubeTexture", 1);
-
-        glActiveTexture(GL_TEXTURE1);
+        cubeShader.setInt("cubeTexture", 0);
+        cubeShader.setMat4("view", view);
+        cubeShader.setMat4("projection", projection);
+        setUpShaderLights(cubeShader);
+        glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, cubeTexture);
-
-
+        setMaterialAttributes(cubeShader, programState->cubeShininess);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, cubeSpecTexture);
+        cubeShader.setInt("material.specular", 1);
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
 
         glEnable(GL_CULL_FACE);
         glFrontFace(GL_CW);
-
-        cubeShader.setMat4("view", view);
-        cubeShader.setMat4("projection", projection);
-        setUpShaderLights(cubeShader);
 
         float xPos = 0.0f;
         float deltaZ = 0.0f;
@@ -637,12 +644,15 @@ int main() {
             if(zPosition + 0.3f >= 0.01f){
                 delete *cubeIt;
                 cubeIt = cubes.erase(cubeIt);
+                programState->score++;
                 continue;
             }
 
             if(comparableFloat(zPosition) >= comparableFloat(-1.2f) && comparableFloat(xModelPos) == comparableFloat(xPos)){
                 cubes.clear();
                 collided = true;
+                if(programState->highScore < programState->score)
+                    programState->highScore = programState->score / 2;
                 break;
             }
 
@@ -670,7 +680,6 @@ int main() {
         modelShader.setMat4("view", view);
         modelShader.setMat4("model", model);
         setUpShaderLights(modelShader);
-
 
         objectModel.Draw(modelShader);
 
@@ -768,8 +777,6 @@ void processInput(GLFWwindow *window) {
 void framebuffer_size_callback(GLFWwindow *window, int width, int height) {
     // make sure the viewport matches the new window dimensions; note that width and
     // height will be significantly larger than specified on retina displays.
-    programState->windowWidth = width;
-    programState->windowHeight = height;
     glViewport(0, 0, width, height);
 }
 
@@ -812,7 +819,6 @@ void setUpShaderLights(Shader shader){
     shader.setFloat("spotLight.outerCutOff", programState->spotLight.outerCutOff);
 
     shader.setVec3("pointLight.position",programState->pointLight.position);
-    shader.setVec3("pointLight.direction",programState->pointLight.direction);
     shader.setVec3("pointLight.ambient", programState->pointLight.ambient);
     shader.setVec3("pointLight.diffuse", programState->pointLight.diffuse);
     shader.setVec3("pointLight.specular", programState->pointLight.specular);
@@ -836,6 +842,10 @@ void drawImGui()
         ImGui::DragInt("Sample number", (int *) &programState->sampleNum, 2, 2, 8);
         ImGui::DragFloat("Exposure", (float *) &programState->exposure, 0.1, 0.1, 10);
         ImGui::Checkbox("Enable Bloom", (bool *) &programState->bloom);
+        ImGui::DragFloat("Cube shininess", (float*)&programState->cubeShininess, 2, 2);
+        ImGui::DragFloat("Plane shininess", (float*)&programState->planeShininess, 2, 2);
+        ImGui::Text("Score: %d", programState->score / 2);
+        ImGui::Text("Highest score: %d", programState->highScore);
         ImGui::End();
     }
     {
@@ -861,7 +871,6 @@ void drawImGui()
     {
         ImGui::Begin("pointLight settings");
         ImGui::DragFloat3("position", (float *) &(programState->pointLight.position));
-        ImGui::DragFloat3("direction", (float *) &(programState->pointLight.direction));
         ImGui::DragFloat3("ambient", (float *) &(programState->pointLight.ambient), 0.05, 0.0, 1.0);
         ImGui::DragFloat3("diffuse", (float *) &(programState->pointLight.diffuse), 0.05, 0.0, 1.0);
         ImGui::DragFloat3("specular", (float *) &(programState->pointLight.specular), 0.05, 0.0, 1.0);
@@ -882,6 +891,7 @@ int comparableFloat(float val){
 void resetGame(){
     cubes.clear();
     collided = false;
+    programState->score = 0;
 }
 
 void renderQuad()
@@ -937,3 +947,9 @@ unsigned int loadTexture(char const* path, bool gammaCorrection)
 
     return textureID;
 }
+
+void setMaterialAttributes(Shader shader, float shininess)
+{
+    shader.setInt("material.diffuse", 0);
+    shader.setFloat("material.shininess", shininess);
+};
